@@ -1,6 +1,6 @@
 import { Platform } from 'react-native';
 
-export const API_KEY = "ms-e79b941a-0f68-47bd-97b4-358167eb46a9";
+export const API_KEY = "ms-1ad6ef04-cdc3-43a5-b243-8cac6e9bb669";
 
 // 调试日志
 const DEBUG = true;

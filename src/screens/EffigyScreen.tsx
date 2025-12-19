@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import * as React from 'react';
+import { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -18,7 +19,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS, SPACING, BORDER_RADIUS } from '../constants/theme';
 import { RootStackParamList } from '../types';
 import { generateImage, TRAIT_PROMPTS } from '../utils/modelScope';
-import { saveEffigyImage, saveEffigyTrait, getEffigyImage } from '../utils/storage';
+import { saveEffigyImage, saveEffigyTrait, getEffigyImage, getEffigyTrait } from '../utils/storage';
 
 const { width } = Dimensions.get('window');
 const TRAITS = ['烦人上司', '前任', '小人', 'Bad Luck'] as const;
@@ -26,19 +27,29 @@ const TRAITS = ['烦人上司', '前任', '小人', 'Bad Luck'] as const;
 // CORS 代理 - Web 端图片加载使用
 const CORS_PROXY = 'https://corsproxy.io/?';
 
-// 处理图片 URL，Web 端需要代理
+// 优化：更加稳健的 URL 处理
+const getUniqueUrl = (url: string) => {
+  if (!url) return '';
+  // 如果是 base64 数据，直接返回，不加时间戳
+  if (url.startsWith('data:')) return url;
+  
+  // 清除旧的时间戳参数（如果有）
+  const cleanUrl = url.split('_t=')[0].replace(/(\?|&)$/, '');
+  const separator = cleanUrl.includes('?') ? '&' : '?';
+  return `${cleanUrl}${separator}_t=${Date.now()}`;
+};
+
 function getImageUri(url: string): string {
   if (!url) return '';
-  // 如果是 base64 或已经是代理 URL，直接返回
   if (url.startsWith('data:') || url.includes('corsproxy.io')) {
     return url;
   }
-  // Web 端外部 URL 需要代理
   if (Platform.OS === 'web' && url.startsWith('http')) {
     return `${CORS_PROXY}${encodeURIComponent(url)}`;
   }
   return url;
 }
+
 type TraitType = typeof TRAITS[number];
 
 type Props = {
@@ -50,18 +61,31 @@ const EffigyScreen: React.FC<Props> = ({ navigation }) => {
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const [generatedImage, setGeneratedImage] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isImageLoading, setIsImageLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const insets = useSafeAreaInsets();
 
   useEffect(() => {
-    getEffigyImage().then((image) => {
-      if (image) {
-        console.log('[EffigyScreen] Loaded image from storage:', image.substring(0, 100));
-        setGeneratedImage(image);
-      } else {
-        console.log('[EffigyScreen] No image in storage');
+    const loadSavedData = async () => {
+      try {
+        const [savedImage, savedTrait] = await Promise.all([
+          getEffigyImage(),
+          getEffigyTrait()
+        ]);
+        
+        if (savedImage) {
+          console.log('[EffigyScreen] Loaded image from storage');
+          setGeneratedImage(getUniqueUrl(savedImage));
+        }
+        
+        if (savedTrait && TRAITS.includes(savedTrait as TraitType)) {
+          setSelectedTrait(savedTrait as TraitType);
+        }
+      } catch (error) {
+        console.error('[EffigyScreen] Error loading saved data:', error);
       }
-    });
+    };
+    loadSavedData();
   }, []);
 
   const handlePickImage = async () => {
@@ -90,17 +114,30 @@ const EffigyScreen: React.FC<Props> = ({ navigation }) => {
 
     setIsGenerating(true);
     setError(null);
+    // setGeneratedImage(null); // 保持旧图片显示，避免闪烁
 
     try {
       const prompt = TRAIT_PROMPTS[selectedTrait];
-      const imageUrl = await generateImage(prompt, uploadedImage);
-      console.log('[EffigyScreen] Generated image URL:', imageUrl.substring(0, 100));
-      setGeneratedImage(imageUrl);
-      await saveEffigyImage(imageUrl);
-      await saveEffigyTrait(selectedTrait);
+      console.log('[EffigyScreen] Generating...');
+      
+      let imageUrl = await generateImage(prompt, uploadedImage);
+      
+      // 这里的 imageUrl 可能是 http 的，确保在 app.json 中开启了 usesCleartextTraffic
+      console.log('[EffigyScreen] Raw URL:', imageUrl); 
+
+      // 添加时间戳防止缓存
+      const finalUrl = getUniqueUrl(imageUrl);
+      
+      setGeneratedImage(finalUrl);
+      
+      // 异步保存，不阻塞UI显示
+      saveEffigyImage(imageUrl).catch(console.error);
+      saveEffigyTrait(selectedTrait).catch(console.error);
+      
     } catch (err) {
-      setError(err instanceof Error ? err.message : '生成失败，请重试');
-      console.error('Image generation failed:', err);
+      const errorMessage = err instanceof Error ? err.message : '生成失败，请重试';
+      console.error('[EffigyScreen] Error:', errorMessage);
+      setError(errorMessage);
     } finally {
       setIsGenerating(false);
     }
@@ -108,7 +145,6 @@ const EffigyScreen: React.FC<Props> = ({ navigation }) => {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.backButton}
@@ -140,7 +176,6 @@ const EffigyScreen: React.FC<Props> = ({ navigation }) => {
           </View>
         </View>
 
-        {/* Loading Indicator */}
         {isGenerating && (
           <View style={styles.loadingSection}>
             <Text style={styles.loadingText}>正在解析灵魂数据...</Text>
@@ -150,29 +185,60 @@ const EffigyScreen: React.FC<Props> = ({ navigation }) => {
           </View>
         )}
 
-        {/* Error */}
         {error && (
           <View style={styles.errorSection}>
             <Text style={styles.errorText}>{error}</Text>
           </View>
         )}
 
-        {/* Image Display */}
-        <View style={styles.imageContainer}>
-          {isGenerating ? (
-            <View style={styles.imagePlaceholder}>
-              <ActivityIndicator size="large" color={COLORS.accentMagenta} />
-              <Text style={styles.generatingText}>正在生成 {selectedTrait} 替身...</Text>
-            </View>
-          ) : generatedImage ? (
-            <View style={styles.imageWrapper}>
+        <View 
+          style={styles.imageContainer}
+          collapsable={false}
+        >
+          {generatedImage ? (
+            <View 
+              style={styles.imageWrapper}
+              collapsable={false}
+            >
               <Image 
-                source={{ uri: getImageUri(generatedImage) }} 
+                source={{ uri: getImageUri(generatedImage) }}
                 style={styles.image}
-                onLoad={() => console.log('[EffigyScreen] Generated image loaded successfully')}
-                onError={(e) => console.error('[EffigyScreen] Generated image load error:', e.nativeEvent)}
+                onLoadStart={() => setIsImageLoading(true)}
+                onLoadEnd={() => setIsImageLoading(false)}
+                onError={(e) => {
+                  console.error('[EffigyScreen] Image load error:', e.nativeEvent);
+                  setIsImageLoading(false);
+                  // 如果加载失败，尝试重新加载
+                  setTimeout(() => {
+                    setGeneratedImage(prev => prev ? getUniqueUrl(prev) : null);
+                  }, 1000);
+                }}
               />
-              <TouchableOpacity style={styles.refreshButton} onPress={handleGenerateImage}>
+              {(isImageLoading || isGenerating) && (
+                <View style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  backgroundColor: 'rgba(0,0,0,0.5)',
+                  zIndex: 20
+                }}>
+                  <ActivityIndicator size="large" color={COLORS.accentCyan} />
+                  {isGenerating && (
+                    <Text style={{color: COLORS.accentCyan, marginTop: 10, fontWeight: 'bold'}}>
+                      正在生成新替身...
+                    </Text>
+                  )}
+                </View>
+              )}
+              <TouchableOpacity 
+                style={styles.refreshButton} 
+                onPress={handleGenerateImage}
+                disabled={isGenerating}
+              >
                 <MaterialIcons name="refresh" size={16} color={COLORS.accentCyan} />
                 <Text style={styles.refreshText}>重新生成</Text>
               </TouchableOpacity>
@@ -180,25 +246,40 @@ const EffigyScreen: React.FC<Props> = ({ navigation }) => {
                 <Text style={styles.imageLabelText}>AI生成 · {selectedTrait}</Text>
               </View>
             </View>
+          ) : isGenerating ? (
+            <View style={styles.uploadPlaceholder}>
+              <ActivityIndicator size="large" color={COLORS.accentMagenta} />
+              <Text style={[styles.uploadText, { marginTop: 20 }]}>正在生成 {selectedTrait} 替身...</Text>
+            </View>
           ) : uploadedImage ? (
             <View style={styles.imageWrapper}>
-              <Image source={{ uri: uploadedImage }} style={styles.image} />
+              <Image 
+                source={{ uri: uploadedImage }} 
+                style={styles.image}
+                resizeMode="cover"
+              />
               <TouchableOpacity
                 style={styles.closeButton}
-                onPress={() => { setUploadedImage(null); setGeneratedImage(null); }}
+                onPress={() => { 
+                  setUploadedImage(null); 
+                  setGeneratedImage(null); 
+                }}
               >
-                <MaterialIcons name="close" size={16} color={COLORS.accentCyan} />
+                <MaterialIcons name="close" size={20} color={COLORS.accentCyan} />
               </TouchableOpacity>
             </View>
           ) : (
-            <TouchableOpacity style={styles.uploadPlaceholder} onPress={handlePickImage}>
-              <MaterialIcons name="add-photo-alternate" size={48} color="rgba(0,255,255,0.5)" />
+            <TouchableOpacity 
+              style={styles.uploadPlaceholder} 
+              onPress={handlePickImage}
+              activeOpacity={0.7}
+            >
+              <MaterialIcons name="add-a-photo" size={48} color="rgba(0, 255, 255, 0.5)" />
               <Text style={styles.uploadText}>点击上传图片</Text>
             </TouchableOpacity>
           )}
         </View>
 
-        {/* Trait Selection */}
         <Text style={styles.traitTitle}>注入特征 //</Text>
         <View style={styles.traitContainer}>
           {TRAITS.map((trait) => (
@@ -210,7 +291,7 @@ const EffigyScreen: React.FC<Props> = ({ navigation }) => {
               ]}
               onPress={() => {
                 setSelectedTrait(trait);
-                setGeneratedImage(null);
+                // 切换特征时不要立即清除 generatedImage，用户体验更好
               }}
               disabled={isGenerating}
             >
@@ -231,7 +312,6 @@ const EffigyScreen: React.FC<Props> = ({ navigation }) => {
         </Text>
       </ScrollView>
 
-      {/* CTA Button */}
       <View style={styles.ctaContainer}>
         {generatedImage ? (
           <TouchableOpacity
@@ -353,85 +433,73 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   imageContainer: {
-    width: 256,
-    height: 256,
+    width: width - 40,
+    height: width - 40,
+    marginVertical: 20,
     alignSelf: 'center',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: SPACING.md,
-  },
-  imagePlaceholder: {
-    width: 224,
-    height: 224,
-    borderRadius: 112,
+    backgroundColor: 'rgba(0, 0, 0, 0.2)',
+    borderRadius: 10,
+    overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(255,0,255,0.3)',
-    backgroundColor: 'rgba(255,0,255,0.05)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  generatingText: {
-    color: COLORS.accentMagenta,
-    fontSize: 14,
-    marginTop: SPACING.sm,
+    borderColor: 'rgba(0, 255, 255, 0.3)',
   },
   imageWrapper: {
-    width: 224,
-    height: 224,
-    borderRadius: 112,
-    backgroundColor: '#171311',
-    overflow: 'hidden',
+    width: '100%',
+    height: '100%',
   },
   image: {
     width: '100%',
     height: '100%',
+    resizeMode: 'cover',
+  },
+  closeButton: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    borderRadius: 15,
+    width: 30,
+    height: 30,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   refreshButton: {
     position: 'absolute',
-    top: SPACING.sm,
-    left: SPACING.sm,
+    top: 10,
+    right: 10,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    padding: 8,
+    borderRadius: 15,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(18,18,18,0.8)',
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: 4,
-    borderRadius: BORDER_RADIUS.md,
-    gap: 4,
+    zIndex: 10,
   },
   refreshText: {
-    color: COLORS.accentCyan,
+    color: '#00ffff',
+    marginLeft: 5,
     fontSize: 12,
   },
   imageLabel: {
     position: 'absolute',
-    bottom: SPACING.sm,
-    right: SPACING.sm,
-    backgroundColor: 'rgba(18,18,18,0.8)',
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: 4,
-    borderRadius: BORDER_RADIUS.md,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    padding: 10,
+    zIndex: 10,
   },
   imageLabelText: {
-    color: COLORS.accentMagenta,
+    color: '#00ffff',
+    textAlign: 'center',
     fontSize: 12,
   },
-  closeButton: {
-    position: 'absolute',
-    top: SPACING.sm,
-    right: SPACING.sm,
-    backgroundColor: 'rgba(18,18,18,0.8)',
-    padding: 4,
-    borderRadius: BORDER_RADIUS.md,
-  },
   uploadPlaceholder: {
-    width: 224,
-    height: 224,
-    borderRadius: 112,
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
     borderWidth: 1,
     borderStyle: 'dashed',
     borderColor: 'rgba(0,255,255,0.5)',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   uploadText: {
     color: 'rgba(0,255,255,0.5)',
