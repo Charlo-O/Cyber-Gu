@@ -1,6 +1,7 @@
 import { Platform } from 'react-native';
 
-export const API_KEY = "ms-1ad6ef04-cdc3-43a5-b243-8cac6e9bb669";
+// 默认 API Key (可被用户配置覆盖)
+export const DEFAULT_API_KEY = "ms-1ad6ef04-cdc3-43a5-b243-8cac6e9bb669";
 
 // 调试日志
 const DEBUG = true;
@@ -37,10 +38,23 @@ export const RITUAL_PROMPTS: Record<string, string> = {
 
 const BASE_URL = 'https://api-inference.modelscope.cn/v1';
 
-// 同步模式调用 - 避免 CORS 问题 (不使用自定义 header)
-export async function generateImage(prompt: string, inputImage?: string): Promise<string> {
+// 动态配置接口
+export interface GenerationConfig {
+  apiKey?: string;
+  modelId?: string;
+}
+
+// 同步模式调用 - 支持动态配置
+export async function generateImage(
+  prompt: string, 
+  inputImage?: string, 
+  config?: GenerationConfig
+): Promise<string> {
+  const apiKey = config?.apiKey || DEFAULT_API_KEY;
+  const modelId = config?.modelId || "Tongyi-MAI/Z-Image-Turbo";
+  
   const requestBody: Record<string, unknown> = {
-    model: "Tongyi-MAI/Z-Image-Turbo",
+    model: modelId,
     prompt: prompt
   };
 
@@ -64,7 +78,7 @@ export async function generateImage(prompt: string, inputImage?: string): Promis
     response = await fetch(apiUrl, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${API_KEY}`,
+        'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(requestBody)
@@ -169,7 +183,7 @@ export async function generateImageAsync(prompt: string, inputImage?: string): P
   const startResponse = await fetch(`${BASE_URL}/images/generations`, {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${API_KEY}`,
+      'Authorization': `Bearer ${DEFAULT_API_KEY}`,
       'Content-Type': 'application/json',
       'X-ModelScope-Async-Mode': 'true'
     },
@@ -191,7 +205,7 @@ export async function generateImageAsync(prompt: string, inputImage?: string): P
     const statusResponse = await fetch(`${BASE_URL}/tasks/${taskId}`, {
       method: 'GET',
       headers: {
-        'Authorization': `Bearer ${API_KEY}`,
+        'Authorization': `Bearer ${DEFAULT_API_KEY}`,
         'X-ModelScope-Task-Type': 'image_generation'
       }
     });

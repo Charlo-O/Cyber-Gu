@@ -2,7 +2,9 @@ import React from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { createDrawerNavigator } from '@react-navigation/drawer';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import {
   ContractScreen,
   MainAltarScreen,
@@ -12,34 +14,46 @@ import {
   RitualLoveScreen,
   RitualServerScreen,
   KarmaScreen,
+  GrimoireScreen,
 } from './src/screens';
 import { RootStackParamList } from './src/types';
+import { ConfigProvider } from './src/context/ConfigContext';
+import DrawerContent from './src/components/DrawerContent';
 
-const Stack = createNativeStackNavigator<RootStackParamList>();
+const Drawer = createDrawerNavigator();
 
 export default function App() {
   return (
-    <SafeAreaProvider>
-      <NavigationContainer>
-        <StatusBar style="light" />
-        <Stack.Navigator
-          initialRouteName="Altar"
-          screenOptions={{
-            headerShown: false,
-            animation: 'slide_from_right',
-            contentStyle: { backgroundColor: '#121212' },
-          }}
-        >
-          <Stack.Screen name="Contract" component={ContractScreen} />
-          <Stack.Screen name="Altar" component={MainAltarScreen} />
-          <Stack.Screen name="Ritual" component={RitualScreen} />
-          <Stack.Screen name="Effigy" component={EffigyScreen} />
-          <Stack.Screen name="RitualDemote" component={RitualDemoteScreen} />
-          <Stack.Screen name="RitualLove" component={RitualLoveScreen} />
-          <Stack.Screen name="RitualServer" component={RitualServerScreen} />
-          <Stack.Screen name="Karma" component={KarmaScreen} />
-        </Stack.Navigator>
-      </NavigationContainer>
-    </SafeAreaProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <ConfigProvider>
+        <SafeAreaProvider>
+          <NavigationContainer>
+            <StatusBar style="light" />
+            <Drawer.Navigator
+              drawerContent={(props) => <DrawerContent {...props} />}
+              screenOptions={{
+                headerShown: false,
+                drawerType: 'front',
+                drawerStyle: {
+                  backgroundColor: '#0d050a',
+                  width: 280,
+                },
+                overlayColor: 'rgba(0,0,0,0.7)',
+              }}
+            >
+              <Drawer.Screen name="Altar" component={MainAltarScreen} />
+              <Drawer.Screen name="Ritual" component={RitualScreen} />
+              <Drawer.Screen name="Effigy" component={EffigyScreen} />
+              <Drawer.Screen name="Grimoire" component={GrimoireScreen} />
+              <Drawer.Screen name="Contract" component={ContractScreen} />
+              <Drawer.Screen name="RitualDemote" component={RitualDemoteScreen} />
+              <Drawer.Screen name="RitualLove" component={RitualLoveScreen} />
+              <Drawer.Screen name="RitualServer" component={RitualServerScreen} />
+              <Drawer.Screen name="Karma" component={KarmaScreen} />
+            </Drawer.Navigator>
+          </NavigationContainer>
+        </SafeAreaProvider>
+      </ConfigProvider>
+    </GestureHandlerRootView>
   );
 }

@@ -6,3 +6,4 @@ export { default as RitualDemoteScreen } from './RitualDemoteScreen';
 export { default as RitualLoveScreen } from './RitualLoveScreen';
 export { default as RitualServerScreen } from './RitualServerScreen';
 export { default as KarmaScreen } from './KarmaScreen';
+export { default as GrimoireScreen } from './GrimoireScreen';

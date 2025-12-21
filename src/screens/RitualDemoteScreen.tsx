@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   Platform,
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useFocusEffect } from '@react-navigation/native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS, SPACING, BORDER_RADIUS } from '../constants/theme';
@@ -39,9 +40,13 @@ const RitualDemoteScreen: React.FC<Props> = ({ navigation }) => {
   const spinAnim = React.useRef(new Animated.Value(0)).current;
   const insets = useSafeAreaInsets();
 
-  useEffect(() => {
-    getEffigyImage().then(setEffigyImage);
+  useFocusEffect(
+    useCallback(() => {
+      getEffigyImage().then(setEffigyImage);
+    }, [])
+  );
 
+  useEffect(() => {
     Animated.loop(
       Animated.timing(spinAnim, {
         toValue: 1,

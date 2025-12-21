@@ -15,11 +15,13 @@ import {
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS, SPACING, BORDER_RADIUS } from '../constants/theme';
 import { RootStackParamList } from '../types';
 import { generateImage, TRAIT_PROMPTS } from '../utils/modelScope';
 import { saveEffigyImage, saveEffigyTrait, getEffigyImage, getEffigyTrait } from '../utils/storage';
+import { useConfig } from '../context/ConfigContext';
 
 const { width } = Dimensions.get('window');
 const TRAITS = ['烦人上司', '前任', '小人', 'Bad Luck'] as const;
@@ -64,6 +66,7 @@ const EffigyScreen: React.FC<Props> = ({ navigation }) => {
   const [isImageLoading, setIsImageLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const insets = useSafeAreaInsets();
+  const { apiKey, selectedModel, customPrompts } = useConfig();
 
   useEffect(() => {
     const loadSavedData = async () => {
@@ -117,10 +120,15 @@ const EffigyScreen: React.FC<Props> = ({ navigation }) => {
     // setGeneratedImage(null); // 保持旧图片显示，避免闪烁
 
     try {
-      const prompt = TRAIT_PROMPTS[selectedTrait];
+      // 使用自定义提示词，如果没有则使用默认
+      const prompt = customPrompts[selectedTrait] || TRAIT_PROMPTS[selectedTrait];
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       console.log('[EffigyScreen] Generating...');
       
-      let imageUrl = await generateImage(prompt, uploadedImage);
+      let imageUrl = await generateImage(prompt, uploadedImage, {
+        apiKey,
+        modelId: selectedModel,
+      });
       
       // 这里的 imageUrl 可能是 http 的，确保在 app.json 中开启了 usesCleartextTraffic
       console.log('[EffigyScreen] Raw URL:', imageUrl); 

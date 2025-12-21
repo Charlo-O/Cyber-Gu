@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
   Platform,
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useFocusEffect } from '@react-navigation/native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -43,9 +44,11 @@ const RitualLoveScreen: React.FC<Props> = ({ navigation }) => {
   const [effigyImage, setEffigyImage] = useState<string | null>(null);
   const insets = useSafeAreaInsets();
 
-  useEffect(() => {
-    getEffigyImage().then(setEffigyImage);
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      getEffigyImage().then(setEffigyImage);
+    }, [])
+  );
 
   const payloads = [
     { name: '推拉战术', icon: 'local-fire-department' as const, colors: ['#ef4444', '#f97316'] as const },

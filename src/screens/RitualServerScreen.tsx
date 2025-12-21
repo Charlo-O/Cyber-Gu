@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import {
   View,
   Text,
@@ -8,35 +8,47 @@ import {
   Animated,
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useFocusEffect } from '@react-navigation/native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS, SPACING, BORDER_RADIUS } from '../constants/theme';
 import { RootStackParamList } from '../types';
+import { getEffigyImage } from '../utils/storage';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'RitualServer'>;
 };
 
 const RitualServerScreen: React.FC<Props> = ({ navigation }) => {
+  const [effigyImage, setEffigyImage] = React.useState<string | null>(null);
   const pulseAnim = React.useRef(new Animated.Value(1)).current;
   const insets = useSafeAreaInsets();
 
-  React.useEffect(() => {
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulseAnim, {
-          toValue: 0.5,
-          duration: 500,
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulseAnim, {
-          toValue: 1,
-          duration: 500,
-          useNativeDriver: true,
-        }),
-      ])
-    ).start();
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      // 获取替身图片
+      getEffigyImage().then(setEffigyImage);
+      
+      // 启动动画
+      const animation = Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, {
+            toValue: 0.5,
+            duration: 500,
+            useNativeDriver: true,
+          }),
+          Animated.timing(pulseAnim, {
+            toValue: 1,
+            duration: 500,
+            useNativeDriver: true,
+          }),
+        ])
+      );
+      animation.start();
+      
+      return () => animation.stop();
+    }, [pulseAnim])
+  );
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>

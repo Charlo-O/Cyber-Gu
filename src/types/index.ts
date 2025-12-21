@@ -27,4 +27,5 @@ export type RootStackParamList = {
   RitualServer: undefined;
   RitualLove: undefined;
   Karma: undefined;
+  Grimoire: undefined;
 };

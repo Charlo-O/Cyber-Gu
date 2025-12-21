@@ -10,8 +10,10 @@ import {
   Modal,
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { DrawerActions, useNavigation } from '@react-navigation/native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as Haptics from 'expo-haptics';
 import { COLORS, SPACING, BORDER_RADIUS } from '../constants/theme';
 import { RootStackParamList } from '../types';
 
@@ -24,12 +26,18 @@ type Props = {
 const MainAltarScreen: React.FC<Props> = ({ navigation }) => {
   const [showModal, setShowModal] = useState(false);
   const insets = useSafeAreaInsets();
+  const drawerNavigation = useNavigation();
+
+  const openDrawer = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    drawerNavigation.dispatch(DrawerActions.openDrawer());
+  };
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       {/* Top Bar */}
       <View style={styles.topBar}>
-        <TouchableOpacity style={styles.iconButton}>
+        <TouchableOpacity style={styles.iconButton} onPress={openDrawer}>
           <MaterialIcons name="menu" size={28} color="rgba(255,255,255,0.8)" />
         </TouchableOpacity>
         <Text style={styles.topBarTitle}>主祭坛</Text>
