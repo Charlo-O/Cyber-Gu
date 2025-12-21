@@ -7,6 +7,8 @@ import {
   Image,
   Animated,
   Platform,
+  ScrollView,
+  Dimensions,
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useFocusEffect } from '@react-navigation/native';
@@ -30,6 +32,9 @@ function getImageUri(url: string): string {
   }
   return url;
 }
+
+// 获取屏幕尺寸
+const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'RitualDemote'>;
@@ -85,9 +90,14 @@ const RitualDemoteScreen: React.FC<Props> = ({ navigation }) => {
         <View style={styles.placeholder} />
       </View>
 
-      <View style={styles.content}>
-        {/* Target */}
-        <View style={styles.targetContainer}>
+      <ScrollView 
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.content}>
+          {/* Target */}
+          <View style={styles.targetContainer}>
           <View style={styles.avatarGlow} />
           <View style={styles.avatarBorder} />
           <View style={styles.avatar}>
@@ -146,7 +156,8 @@ const RitualDemoteScreen: React.FC<Props> = ({ navigation }) => {
             <Text style={styles.sendButtonText}>按住</Text>
           </TouchableOpacity>
         </View>
-      </View>
+        </View>
+      </ScrollView>
     </View>
   );
 };
@@ -155,6 +166,13 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.backgroundDark,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    paddingBottom: 20,
   },
   decorShape: {
     position: 'absolute',
@@ -201,22 +219,22 @@ const styles = StyleSheet.create({
     width: 48,
   },
   content: {
-    flex: 1,
     paddingHorizontal: SPACING.md,
+    paddingBottom: 20,
   },
   targetContainer: {
-    width: 256,
-    height: 256,
+    width: Math.min(256, screenWidth * 0.7),
+    height: Math.min(256, screenWidth * 0.7),
     alignSelf: 'center',
     alignItems: 'center',
     justifyContent: 'center',
-    marginVertical: SPACING.lg,
+    marginVertical: SPACING.md,
   },
   avatarGlow: {
     position: 'absolute',
     width: '100%',
     height: '100%',
-    borderRadius: 128,
+    borderRadius: Math.min(128, screenWidth * 0.35),
     borderWidth: 2,
     borderColor: COLORS.glitchPurple,
     opacity: 0.7,
@@ -225,14 +243,14 @@ const styles = StyleSheet.create({
     position: 'absolute',
     width: '92%',
     height: '92%',
-    borderRadius: 118,
+    borderRadius: Math.min(118, screenWidth * 0.32),
     borderWidth: 1,
     borderColor: 'rgba(138,43,226,0.5)',
   },
   avatar: {
-    width: 224,
-    height: 224,
-    borderRadius: 112,
+    width: Math.min(224, screenWidth * 0.6),
+    height: Math.min(224, screenWidth * 0.6),
+    borderRadius: Math.min(112, screenWidth * 0.3),
     backgroundColor: '#100C14',
     borderWidth: 2,
     borderColor: 'rgba(138,43,226,0.3)',
@@ -276,7 +294,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.4)',
     borderRadius: BORDER_RADIUS.lg,
     padding: SPACING.md,
-    marginBottom: SPACING.md,
+    marginBottom: SPACING.sm,
   },
   cardYellow: {
     borderColor: 'rgba(255,215,0,0.5)',
@@ -364,8 +382,8 @@ const styles = StyleSheet.create({
   },
   sendSection: {
     alignItems: 'center',
-    marginTop: 'auto',
-    paddingBottom: SPACING.xl,
+    marginTop: SPACING.md,
+    marginBottom: SPACING.md,
   },
   sendLabel: {
     color: COLORS.white,
@@ -374,9 +392,9 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.sm,
   },
   sendButton: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
+    width: Math.min(96, screenWidth * 0.25),
+    height: Math.min(96, screenWidth * 0.25),
+    borderRadius: Math.min(48, screenWidth * 0.125),
     backgroundColor: COLORS.glitchPurple,
     alignItems: 'center',
     justifyContent: 'center',
@@ -385,7 +403,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     width: '100%',
     height: '100%',
-    borderRadius: 48,
+    borderRadius: Math.min(48, screenWidth * 0.125),
     backgroundColor: 'rgba(138,43,226,0.5)',
   },
   sendButtonText: {

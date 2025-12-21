@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   Image,
   Dimensions,
   Modal,
+  Animated,
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { DrawerActions, useNavigation } from '@react-navigation/native';
@@ -27,6 +28,45 @@ const MainAltarScreen: React.FC<Props> = ({ navigation }) => {
   const [showModal, setShowModal] = useState(false);
   const insets = useSafeAreaInsets();
   const drawerNavigation = useNavigation();
+  
+  // 动画效果
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const glowAnim = useRef(new Animated.Value(0)).current;
+  
+  useEffect(() => {
+    // 脉冲动画
+    const pulseLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 1.05,
+          duration: 2000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 2000,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    
+    // 光晕动画
+    const glowLoop = Animated.loop(
+      Animated.timing(glowAnim, {
+        toValue: 1,
+        duration: 3000,
+        useNativeDriver: true,
+      })
+    );
+    
+    pulseLoop.start();
+    glowLoop.start();
+    
+    return () => {
+      pulseLoop.stop();
+      glowLoop.stop();
+    };
+  }, []);
 
   const openDrawer = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -69,12 +109,45 @@ const MainAltarScreen: React.FC<Props> = ({ navigation }) => {
           onPress={() => navigation.navigate('Effigy')}
           activeOpacity={0.8}
         >
-          <View style={styles.vesselGlow} />
-          <Image
-            source={{ uri: 'https://lh3.googleusercontent.com/aida-public/AB6AXuAvmW-uGwuf7lcRmE537IPK6yaCXcHD4Lz6XUxqTICpA-KdJtH-2tdsD4y5i28sEP1w3gllUcHPgCsYUA435bZJOgjm-VEE4YNQNPILomSYIN_tRXIIgoiW6G1VmFkesj6gcJ1l8afmr4K2JG5tKLn4BWFQayPyAE4NSD-SwLTIpMLZrK0ey4sDtsQY2FAjFtV3DYQy58eMflWSivgHiFRTZKBCDHNGZEXJNYQq_uPcjsNT86FFCDNSsIvonXRp7rQ8vHnC_MHj3B2F' }}
-            style={styles.vesselImage}
-            resizeMode="contain"
+          {/* 外层光晕效果 */}
+          <Animated.View 
+            style={[
+              styles.vesselOuterGlow,
+              {
+                opacity: glowAnim,
+                transform: [{ scale: pulseAnim }]
+              }
+            ]} 
           />
+          {/* 中层紫色边框 */}
+          <View style={styles.vesselPurpleBorder} />
+          {/* 内层光晕 */}
+          <Animated.View 
+            style={[
+              styles.vesselInnerGlow,
+              {
+                opacity: Animated.add(0.3, Animated.multiply(glowAnim, 0.5)),
+                transform: [{ scale: Animated.add(0.98, Animated.multiply(pulseAnim, 0.02)) }]
+              }
+            ]} 
+          />
+          {/* 圆形图片 */}
+          <View style={styles.vesselImageContainer}>
+            <Image
+              source={{ uri: 'https://lh3.googleusercontent.com/aida-public/AB6AXuAvmW-uGwuf7lcRmE537IPK6yaCXcHD4Lz6XUxqTICpA-KdJtH-2tdsD4y5i28sEP1w3gllUcHPgCsYUA435bZJOgjm-VEE4YNQNPILomSYIN_tRXIIgoiW6G1VmFkesj6gcJ1l8afmr4K2JG5tKLn4BWFQayPyAE4NSD-SwLTIpMLZrK0ey4sDtsQY2FAjFtV3DYQy58eMflWSivgHiFRTZKBCDHNGZEXJNYQq_uPcjsNT86FFCDNSsIvonXRp7rQ8vHnC_MHj3B2F' }}
+              style={styles.vesselImage}
+              resizeMode="cover"
+            />
+          </View>
+          {/* 施法效果粒子 */}
+          <View style={styles.ritualParticles}>
+            <View style={[styles.particle, styles.particle1]} />
+            <View style={[styles.particle, styles.particle2]} />
+            <View style={[styles.particle, styles.particle3]} />
+            <View style={[styles.particle, styles.particle4]} />
+            <View style={[styles.particle, styles.particle5]} />
+            <View style={[styles.particle, styles.particle6]} />
+          </View>
         </TouchableOpacity>
 
         {/* Incense */}
@@ -182,55 +255,55 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    padding: SPACING.md,
-    paddingBottom: 100,
+    padding: SPACING.sm,
+    paddingBottom: 80,
   },
   fortuneCard: {
     borderWidth: 1,
     borderColor: 'rgba(227,88,53,0.2)',
     borderRadius: BORDER_RADIUS.xl,
     backgroundColor: 'rgba(227,88,53,0.05)',
-    padding: SPACING.md,
-    marginBottom: SPACING.lg,
+    padding: SPACING.sm,
+    marginBottom: SPACING.md,
   },
   fortuneTitle: {
     color: COLORS.primary,
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: 'bold',
-    marginBottom: SPACING.sm,
+    marginBottom: SPACING.xs,
   },
   fortuneRow: {
     flexDirection: 'row',
-    marginTop: SPACING.sm,
+    marginTop: SPACING.xs,
   },
   fortuneGood: {
     color: COLORS.green400,
     fontWeight: 'bold',
-    fontSize: 16,
+    fontSize: 14,
   },
   fortuneBad: {
     color: COLORS.red400,
     fontWeight: 'bold',
-    fontSize: 16,
+    fontSize: 14,
   },
   fortuneText: {
     color: 'rgba(255,255,255,0.7)',
-    fontSize: 14,
+    fontSize: 12,
     flex: 1,
-    marginLeft: SPACING.sm,
+    marginLeft: SPACING.xs,
   },
   vesselTitle: {
     color: COLORS.white,
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: 'bold',
     textAlign: 'center',
-    marginTop: SPACING.md,
+    marginTop: SPACING.xs,
   },
   vesselSubtitle: {
     color: 'rgba(255,255,255,0.5)',
-    fontSize: 14,
+    fontSize: 12,
     textAlign: 'center',
-    marginBottom: SPACING.lg,
+    marginBottom: SPACING.sm,
   },
   vesselContainer: {
     width: width - 32,
@@ -238,21 +311,102 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     alignSelf: 'center',
+    position: 'relative',
+    marginBottom: SPACING.xs,
   },
-  vesselGlow: {
+  vesselOuterGlow: {
+    position: 'absolute',
+    width: '85%',
+    height: '85%',
+    borderRadius: 999,
+    backgroundColor: 'rgba(138, 43, 226, 0.2)',
+    shadowColor: '#8a2be2',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
+    shadowRadius: 20,
+    elevation: 15,
+  },
+  vesselPurpleBorder: {
+    position: 'absolute',
+    width: '80%',
+    height: '80%',
+    borderRadius: 999,
+    borderWidth: 3,
+    borderColor: '#8a2be2',
+    backgroundColor: 'transparent',
+    shadowColor: '#8a2be2',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.6,
+    shadowRadius: 10,
+    elevation: 10,
+  },
+  vesselInnerGlow: {
     position: 'absolute',
     width: '75%',
     height: '75%',
     borderRadius: 999,
-    backgroundColor: 'rgba(227,88,53,0.2)',
+    backgroundColor: 'rgba(138, 43, 226, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(138, 43, 226, 0.3)',
+  },
+  vesselImageContainer: {
+    width: '70%',
+    height: '70%',
+    borderRadius: 999,
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: 'rgba(138, 43, 226, 0.5)',
+    backgroundColor: '#100C14',
   },
   vesselImage: {
     width: '100%',
     height: '100%',
   },
+  ritualParticles: {
+    position: 'absolute',
+    width: '100%',
+    height: '100%',
+  },
+  particle: {
+    position: 'absolute',
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#8a2be2',
+  },
+  particle1: {
+    top: '10%',
+    left: '15%',
+    opacity: 0.8,
+  },
+  particle2: {
+    top: '20%',
+    right: '10%',
+    opacity: 0.6,
+  },
+  particle3: {
+    bottom: '15%',
+    left: '8%',
+    opacity: 0.7,
+  },
+  particle4: {
+    bottom: '25%',
+    right: '12%',
+    opacity: 0.9,
+  },
+  particle5: {
+    top: '45%',
+    left: '5%',
+    opacity: 0.5,
+  },
+  particle6: {
+    top: '35%',
+    right: '7%',
+    opacity: 0.8,
+  },
   incenseContainer: {
     alignItems: 'center',
-    paddingVertical: SPACING.lg,
+    paddingVertical: SPACING.sm,
   },
   incenseRow: {
     flexDirection: 'row',

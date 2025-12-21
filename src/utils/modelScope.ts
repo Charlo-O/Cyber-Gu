@@ -12,15 +12,15 @@ function log(...args: unknown[]) {
 // CORS 代理 - Web 端使用
 const CORS_PROXY = 'https://corsproxy.io/?';
 
-// 备用测试图片 (当 API 不可用时)
+// 备用测试图片 (当 API 不可用时) - 确保所有图片都是1:1比例
 const FALLBACK_IMAGES: Record<string, string> = {
-  '烦人上司': 'https://picsum.photos/seed/boss/512/512',
-  '前任': 'https://picsum.photos/seed/ex/512/512',
-  '小人': 'https://picsum.photos/seed/villain/512/512',
-  'Bad Luck': 'https://picsum.photos/seed/badluck/512/512',
-  'love': 'https://picsum.photos/seed/love/512/512',
-  'demote': 'https://picsum.photos/seed/demote/512/512',
-  'luck': 'https://picsum.photos/seed/luck/512/512',
+  '烦人上司': 'https://picsum.photos/512/512?seed=boss',
+  '前任': 'https://picsum.photos/512/512?seed=ex',
+  '小人': 'https://picsum.photos/512/512?seed=villain',
+  'Bad Luck': 'https://picsum.photos/512/512?seed=badluck',
+  'love': 'https://picsum.photos/512/512?seed=love',
+  'demote': 'https://picsum.photos/512/512?seed=demote',
+  'luck': 'https://picsum.photos/512/512?seed=luck',
 };
 
 export const TRAIT_PROMPTS: Record<string, string> = {
@@ -42,6 +42,12 @@ const BASE_URL = 'https://api-inference.modelscope.cn/v1';
 export interface GenerationConfig {
   apiKey?: string;
   modelId?: string;
+  size?: string; // 格式为'宽x高'，例如'512x512'
+  negativePrompt?: string; // 负向提示词
+  seed?: number; // 随机种子 [0,2^31-1]
+  steps?: number; // 采样步数 [1,100]
+  guidance?: number; // 提示词引导系数 [1.5,20]
+  loras?: string | Record<string, number>; // LoRA模型配置
 }
 
 // 同步模式调用 - 支持动态配置
@@ -53,10 +59,19 @@ export async function generateImage(
   const apiKey = config?.apiKey || DEFAULT_API_KEY;
   const modelId = config?.modelId || "Tongyi-MAI/Z-Image-Turbo";
   
+  // 设置请求体，使用size参数控制图片尺寸，默认为512x512
   const requestBody: Record<string, unknown> = {
     model: modelId,
-    prompt: prompt
+    prompt: prompt,
+    size: config?.size || '512x512' // 使用size参数，格式为'宽x高'
   };
+
+  // 添加可选参数
+  if (config?.negativePrompt) requestBody.negative_prompt = config.negativePrompt;
+  if (config?.seed !== undefined) requestBody.seed = config.seed;
+  if (config?.steps) requestBody.steps = config.steps;
+  if (config?.guidance) requestBody.guidance = config.guidance;
+  if (config?.loras) requestBody.loras = config.loras;
 
   if (inputImage) {
     requestBody.image = inputImage;
