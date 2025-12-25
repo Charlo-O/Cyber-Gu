@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -9,14 +9,20 @@ import {
   Platform,
   ScrollView,
   Dimensions,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useFocusEffect } from '@react-navigation/native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as Haptics from 'expo-haptics';
+import { Video, ResizeMode } from 'expo-av';
 import { COLORS, SPACING, BORDER_RADIUS } from '../constants/theme';
 import { RootStackParamList } from '../types';
 import { getEffigyImage } from '../utils/storage';
+import { useConfig, DEMOTE_VIDEO_PROMPTS } from '../context/ConfigContext';
+import { generateVideoFromImage } from '../utils/videoGeneration';
 
 // CORS 代理 - Web 端图片加载使用
 const CORS_PROXY = 'https://corsproxy.io/?';
@@ -42,12 +48,31 @@ type Props = {
 
 const RitualDemoteScreen: React.FC<Props> = ({ navigation }) => {
   const [effigyImage, setEffigyImage] = useState<string | null>(null);
+  const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [selectedVirusType, setSelectedVirusType] = useState<string | null>(null);
+  const [generatingType, setGeneratingType] = useState<string | null>(null);
+  const [generationStatus, setGenerationStatus] = useState<string>('');
   const spinAnim = React.useRef(new Animated.Value(0)).current;
   const insets = useSafeAreaInsets();
+  const { videoConfig } = useConfig();
+
+  const effigyImageSource = useMemo(() => {
+    if (!effigyImage) return null;
+    return { uri: getImageUri(effigyImage) };
+  }, [effigyImage]);
+
+  const placeholderImageSource = useMemo(() => {
+    return {
+      uri: getImageUri('https://lh3.googleusercontent.com/aida-public/AB6AXuCwvGuAlvfMI3a4CLhawyAJxQMZnPBTfm2R7RN-ebKPv8YHGrjvYr9xCM9WeQ0ew8WD1o3f8dU9AvhO5ZqvftYthcvYap8HfJmkH0lS7ZKVD_UQsFV_vGd-apgCBy5EneHk2xK8okqaY91oPo0p9ve9ZtY4YJDl7eiEB3_PaAn_qoPaB9gEIJtKiMq5h2czqaY3Sikw4C6Tnn4hQtkQrdn-qF9BvyemOHx0KIaWjyLvg1AlxjPqd68WixHapwvcX0riCPqtTzCpvO49'),
+    };
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
       getEffigyImage().then(setEffigyImage);
+      // Reset video when returning to screen
+      setVideoUrl(null);
     }, [])
   );
 
@@ -65,6 +90,87 @@ const RitualDemoteScreen: React.FC<Props> = ({ navigation }) => {
     inputRange: [0, 1],
     outputRange: ['0deg', '360deg'],
   });
+
+  const handleSelectVirus = async (virusType: string) => {
+    if (isGenerating) return;
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setSelectedVirusType(virusType);
+  };
+
+  const handleSendPress = async () => {
+    if (isGenerating) return;
+
+    if (!selectedVirusType) {
+      Alert.alert('请选择病毒', '请先选择要注入的病毒');
+      return;
+    }
+
+    if (!effigyImage) {
+      Alert.alert('缺少目标', '请先在替身工坊创建替身');
+      return;
+    }
+
+    if (!videoConfig.apiKey) {
+      Alert.alert(
+        '未配置',
+        '请先在魔法书系统中配置视频模型的 API Key\n\n提示：点击右上角进入魔法书系统配置',
+        [{ text: '知道了' }]
+      );
+      return;
+    }
+
+    if (!videoConfig.baseUrl) {
+      Alert.alert(
+        '配置不完整',
+        '视频API地址未配置\n请在魔法书系统中完善配置',
+        [{ text: '知道了' }]
+      );
+      return;
+    }
+
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    setIsGenerating(true);
+    setGeneratingType(selectedVirusType);
+    setGenerationStatus('正在准备...');
+    setVideoUrl(null);
+
+    try {
+      const prompt =
+        DEMOTE_VIDEO_PROMPTS[selectedVirusType] || `Apply ${selectedVirusType} effect to the character`;
+
+      const result = await generateVideoFromImage(prompt, effigyImage, videoConfig, (status) => {
+        setGenerationStatus(status);
+      });
+
+      setVideoUrl(result);
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert('仪式完成', `${selectedVirusType}效果已生效！`);
+    } catch (error) {
+      console.error('Video generation failed:', error);
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+
+      const errorMessage = error instanceof Error ? error.message : '视频生成失败';
+
+      if (errorMessage.includes('DNS') || errorMessage.includes('不可用')) {
+        Alert.alert(
+          '服务暂时不可用',
+          errorMessage + '\n\n建议：\n1. 检查网络连接\n2. 稍后重试\n3. 或在魔法书系统中更换API服务商',
+          [{ text: '知道了' }]
+        );
+      } else if (errorMessage.includes('API Key')) {
+        Alert.alert('API配置错误', errorMessage, [
+          { text: '取消', style: 'cancel' },
+          { text: '去配置', onPress: () => navigation.navigate('Grimoire') },
+        ]);
+      } else {
+        Alert.alert('仪式失败', errorMessage, [{ text: '知道了' }]);
+      }
+    } finally {
+      setIsGenerating(false);
+      setGeneratingType(null);
+      setGenerationStatus('');
+    }
+  };
 
   const virusItems = [
     { icon: 'science' as const, label: '胡言乱语' },
@@ -101,11 +207,27 @@ const RitualDemoteScreen: React.FC<Props> = ({ navigation }) => {
           <View style={styles.avatarGlow} />
           <View style={styles.avatarBorder} />
           <View style={styles.avatar}>
-            {effigyImage ? (
-              <Image source={{ uri: getImageUri(effigyImage) }} style={styles.avatarImage} />
+            {videoUrl ? (
+              // 显示生成的视频
+              <Video
+                source={{ uri: videoUrl }}
+                style={styles.avatarImage}
+                resizeMode={ResizeMode.COVER}
+                shouldPlay
+                isLooping
+                isMuted={false}
+              />
+            ) : isGenerating ? (
+              // 显示加载状态
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color={COLORS.glitchPurple} />
+                <Text style={styles.loadingText}>{generationStatus}</Text>
+              </View>
+            ) : effigyImage ? (
+              <Image source={effigyImageSource as any} style={styles.avatarImage} />
             ) : (
               <Image
-                source={{ uri: getImageUri('https://lh3.googleusercontent.com/aida-public/AB6AXuCwvGuAlvfMI3a4CLhawyAJxQMZnPBTfm2R7RN-ebKPv8YHGrjvYr9xCM9WeQ0ew8WD1o3f8dU9AvhO5ZqvftYthcvYap8HfJmkH0lS7ZKVD_UQsFV_vGd-apgCBy5EneHk2xK8okqaY91oPo0p9ve9ZtY4YJDl7eiEB3_PaAn_qoPaB9gEIJtKiMq5h2czqaY3Sikw4C6Tnn4hQtkQrdn-qF9BvyemOHx0KIaWjyLvg1AlxjPqd68WixHapwvcX0riCPqtTzCpvO49') }}
+                source={placeholderImageSource as any}
                 style={[styles.avatarImage, { opacity: 0.8 }]}
               />
             )}
@@ -123,11 +245,24 @@ const RitualDemoteScreen: React.FC<Props> = ({ navigation }) => {
         {/* Step 1: Inject */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>1. 注入</Text>
-          <Text style={styles.cardSubtitle}>拖动病毒瓶到目标</Text>
+          <Text style={styles.cardSubtitle}>选择注入的病毒</Text>
           <View style={styles.virusGrid}>
             {virusItems.map((item, idx) => (
-              <TouchableOpacity key={idx} style={styles.virusItem}>
-                <MaterialIcons name={item.icon} size={28} color={COLORS.glitchPurple} />
+              <TouchableOpacity 
+                key={idx} 
+                style={[
+                  styles.virusItem,
+                  selectedVirusType === item.label && styles.virusItemActive,
+                  isGenerating && generatingType !== item.label && styles.virusItemDisabled,
+                ]}
+                onPress={() => handleSelectVirus(item.label)}
+                disabled={isGenerating}
+              >
+                {isGenerating && generatingType === item.label ? (
+                  <ActivityIndicator size="small" color={COLORS.glitchPurple} />
+                ) : (
+                  <MaterialIcons name={item.icon} size={28} color={COLORS.glitchPurple} />
+                )}
                 <Text style={styles.virusLabel}>{item.label}</Text>
               </TouchableOpacity>
             ))}
@@ -150,10 +285,15 @@ const RitualDemoteScreen: React.FC<Props> = ({ navigation }) => {
         {/* Step 3: Send */}
         <View style={styles.sendSection}>
           <Text style={styles.sendLabel}>3. 发送脑波</Text>
-          <TouchableOpacity style={styles.sendButton} activeOpacity={0.8}>
+          <TouchableOpacity
+            style={styles.sendButton}
+            activeOpacity={0.8}
+            onPress={handleSendPress}
+            disabled={isGenerating}
+          >
             <View style={styles.sendButtonPing} />
             <MaterialIcons name="radar" size={36} color={COLORS.white} />
-            <Text style={styles.sendButtonText}>按住</Text>
+            <Text style={styles.sendButtonText}>发送</Text>
           </TouchableOpacity>
         </View>
         </View>
@@ -211,7 +351,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   headerTitle: {
-    color: COLORS.white,
+    color: COLORS.glitchPurple,
     fontSize: 18,
     fontWeight: 'bold',
   },
@@ -411,6 +551,26 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: 'bold',
     marginTop: 2,
+  },
+  // Loading and video styles
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.8)',
+  },
+  loadingText: {
+    color: COLORS.glitchPurple,
+    fontSize: 12,
+    marginTop: SPACING.sm,
+    fontFamily: 'monospace',
+  },
+  virusItemActive: {
+    borderColor: COLORS.glitchPurple,
+    backgroundColor: 'rgba(138,43,226,0.3)',
+  },
+  virusItemDisabled: {
+    opacity: 0.5,
   },
 });
 

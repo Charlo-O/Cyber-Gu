@@ -204,7 +204,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   headerTitle: {
-    color: COLORS.white,
+    color: COLORS.steamwavePink,
     fontSize: 18,
     fontWeight: 'bold',
     letterSpacing: 2,

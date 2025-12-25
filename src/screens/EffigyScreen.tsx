@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -28,28 +28,67 @@ const TRAITS = ['烦人上司', '前任', '小人', 'Bad Luck'] as const;
 
 // CORS 代理 - Web 端图片加载使用
 const CORS_PROXY = 'https://corsproxy.io/?';
+// 最大重试次数
+const MAX_RETRIES = 3;
 
-// 优化：更加稳健的 URL 处理
-const getUniqueUrl = (url: string) => {
-  if (!url) return '';
-  // 如果是 base64 数据，直接返回，不加时间戳
-  if (url.startsWith('data:')) return url;
-  
-  // 清除旧的时间戳参数（如果有）
-  const cleanUrl = url.split('_t=')[0].replace(/(\?|&)$/, '');
-  const separator = cleanUrl.includes('?') ? '&' : '?';
-  return `${cleanUrl}${separator}_t=${Date.now()}`;
+const IMAGE_HEADERS = {
+  Accept: 'image/*',
+  'Cache-Control': 'no-cache',
+  Pragma: 'no-cache',
 };
 
-function getImageUri(url: string): string {
+// 优化：更加稳健的 URL 处理
+const getUniqueUrl = (url: string): string => {
   if (!url) return '';
+  // 如果是 base64 数据或已经是代理URL，直接返回
   if (url.startsWith('data:') || url.includes('corsproxy.io')) {
     return url;
   }
-  if (Platform.OS === 'web' && url.startsWith('http')) {
-    return `${CORS_PROXY}${encodeURIComponent(url)}`;
+  
+  try {
+    // 解析URL以正确处理参数
+    const urlObj = new URL(url);
+    // 移除旧的时间戳参数
+    urlObj.searchParams.delete('_t');
+    // 添加新的时间戳防止缓存
+    urlObj.searchParams.set('_t', Date.now().toString());
+    return urlObj.toString();
+  } catch (e) {
+    console.warn('Invalid URL format, falling back to simple timestamp:', url);
+    // 如果URL解析失败，使用简单的方法添加时间戳
+    const separator = url.includes('?') ? '&' : '?';
+    return `${url.split('?')[0]}${separator}_t=${Date.now()}`;
   }
-  return url;
+};
+
+// 获取图片URI，支持CORS代理和重试逻辑
+function getImageUri(url: string, retryCount: number = 0): string {
+  if (!url) return '';
+  
+  // 如果是base64数据，直接返回
+  if (url.startsWith('data:')) return url;
+  
+  try {
+    // 如果是web平台并且是http(s) URL，使用CORS代理
+    if (Platform.OS === 'web' && (url.startsWith('http://') || url.startsWith('https://'))) {
+      // 如果已经是代理URL，直接返回
+      if (url.includes('corsproxy.io')) {
+        return url;
+      }
+      
+      // 对URL进行编码，确保只编码一次
+      const encodedUrl = encodeURIComponent(url);
+      // 添加重试参数
+      const retrySuffix = retryCount > 0 ? `&retry=${retryCount}` : '';
+      return `${CORS_PROXY}${encodedUrl}${retrySuffix}`;
+    }
+    
+    // 对于非web平台或非http(s) URL，直接返回原URL（添加时间戳防止缓存）
+    return getUniqueUrl(url);
+  } catch (e) {
+    console.error('Error processing image URL:', e);
+    return url; // 出错时返回原URL
+  }
 }
 
 type TraitType = typeof TRAITS[number];
@@ -64,9 +103,25 @@ const EffigyScreen: React.FC<Props> = ({ navigation }) => {
   const [generatedImage, setGeneratedImage] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isImageLoading, setIsImageLoading] = useState(false);
+  const [hasImageLoaded, setHasImageLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
   const insets = useSafeAreaInsets();
-  const { apiKey, selectedModel, customPrompts } = useConfig();
+  const { paintingConfig, customPrompts } = useConfig();
+
+  const generatedImageSource = useMemo(() => {
+    if (!generatedImage) return null;
+    const uri = getImageUri(generatedImage, retryCount);
+    if (Platform.OS === 'web') {
+      return { uri };
+    }
+    return { uri, headers: IMAGE_HEADERS };
+  }, [generatedImage, retryCount]);
+
+  const uploadedImageSource = useMemo(() => {
+    if (!uploadedImage) return null;
+    return { uri: uploadedImage };
+  }, [uploadedImage]);
 
   useEffect(() => {
     const loadSavedData = async () => {
@@ -90,6 +145,12 @@ const EffigyScreen: React.FC<Props> = ({ navigation }) => {
     };
     loadSavedData();
   }, []);
+
+  useEffect(() => {
+    if (generatedImage) {
+      setHasImageLoaded(false);
+    }
+  }, [generatedImage]);
 
   const handlePickImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -126,8 +187,8 @@ const EffigyScreen: React.FC<Props> = ({ navigation }) => {
       console.log('[EffigyScreen] Generating...');
       
       let imageUrl = await generateImage(prompt, uploadedImage, {
-        apiKey,
-        modelId: selectedModel,
+        apiKey: paintingConfig.apiKey,
+        modelId: paintingConfig.model,
       });
       
       // 这里的 imageUrl 可能是 http 的，确保在 app.json 中开启了 usesCleartextTraffic
@@ -209,20 +270,54 @@ const EffigyScreen: React.FC<Props> = ({ navigation }) => {
               collapsable={false}
             >
               <Image 
-                source={{ uri: getImageUri(generatedImage) }}
+                source={generatedImageSource as any}
                 style={styles.image}
                 onLoadStart={() => setIsImageLoading(true)}
-                onLoadEnd={() => setIsImageLoading(false)}
+                onLoad={() => {
+                  setIsImageLoading(false);
+                  setHasImageLoaded(true);
+                }}
+                onLoadEnd={() => {
+                  setIsImageLoading(false);
+                  setHasImageLoaded(true);
+                  // 重置重试计数当图片加载成功时
+                  if (retryCount > 0) {
+                    setRetryCount(0);
+                  }
+                }}
                 onError={(e) => {
                   console.error('[EffigyScreen] Image load error:', e.nativeEvent);
                   setIsImageLoading(false);
-                  // 如果加载失败，尝试重新加载
-                  setTimeout(() => {
-                    setGeneratedImage(prev => prev ? getUniqueUrl(prev) : null);
-                  }, 1000);
+                  setHasImageLoaded(false);
+                  
+                  // 如果重试次数未达到最大值，则重试
+                  if (retryCount < MAX_RETRIES) {
+                    const newRetryCount = retryCount + 1;
+                    console.log(`[EffigyScreen] Retrying image load (${newRetryCount}/${MAX_RETRIES})`);
+                    
+                    setRetryCount(newRetryCount);
+                    
+                    // 使用setTimeout避免立即重试，给网络一个恢复的机会
+                    setTimeout(() => {
+                      setGeneratedImage(prev => {
+                        if (!prev) return null;
+                        // 使用新的重试计数重新生成URL
+                        return getImageUri(prev, newRetryCount);
+                      });
+                    }, 1000 * newRetryCount); // 指数退避
+                  } else {
+                    // 如果重试次数达到最大值，尝试直接加载原始URL（不通过代理）
+                    if (generatedImage && generatedImage.includes('corsproxy.io')) {
+                      console.log('[EffigyScreen] Retry limit reached, trying direct URL');
+                      const directUrl = generatedImage.replace(/^https?:\/\/corsproxy\.io\/\?/, '');
+                      setGeneratedImage(decodeURIComponent(directUrl));
+                    } else {
+                      setError('图片加载失败，请检查网络或稍后重试');
+                    }
+                  }
                 }}
               />
-              {(isImageLoading || isGenerating) && (
+              {(isGenerating || (isImageLoading && !hasImageLoaded)) && (
                 <View style={{
                   position: 'absolute',
                   top: 0,
@@ -262,7 +357,7 @@ const EffigyScreen: React.FC<Props> = ({ navigation }) => {
           ) : uploadedImage ? (
             <View style={styles.imageWrapper}>
               <Image 
-                source={{ uri: uploadedImage }} 
+                source={uploadedImageSource as any}
                 style={styles.image}
                 resizeMode="cover"
               />

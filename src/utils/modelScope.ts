@@ -1,7 +1,8 @@
 import { Platform } from 'react-native';
+import { ModelConfig, DEFAULT_PAINTING_CONFIG } from '../context/ConfigContext';
 
 // 默认 API Key (可被用户配置覆盖)
-export const DEFAULT_API_KEY = "ms-1ad6ef04-cdc3-43a5-b243-8cac6e9bb669";
+export const DEFAULT_API_KEY = DEFAULT_PAINTING_CONFIG.apiKey;
 
 // 调试日志
 const DEBUG = true;

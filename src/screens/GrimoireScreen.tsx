@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -15,39 +15,71 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { COLORS, SPACING, BORDER_RADIUS } from '../constants/theme';
 import { RootStackParamList } from '../types';
-import { useConfig, AVAILABLE_MODELS, DEFAULT_TRAIT_PROMPTS } from '../context/ConfigContext';
+import { useConfig, DEFAULT_TRAIT_PROMPTS, ModelConfig } from '../context/ConfigContext';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Grimoire'>;
 };
 
+type ModelType = 'painting' | 'video' | 'text';
+
+const MODEL_TYPE_INFO: Record<ModelType, { title: string; icon: string; color: string; desc: string }> = {
+  painting: { title: '绘画模型', icon: 'brush', color: COLORS.accentCyan, desc: '用于生成替身图像' },
+  video: { title: '视频模型', icon: 'videocam', color: COLORS.accentMagenta, desc: '用于生成降智蛊视频' },
+  text: { title: '文本模型', icon: 'chat', color: COLORS.primary, desc: '用于文本生成和对话' },
+};
+
 const GrimoireScreen: React.FC<Props> = ({ navigation }) => {
   const insets = useSafeAreaInsets();
   const {
-    apiKey,
-    setApiKey,
-    selectedModel,
-    setSelectedModel,
+    paintingConfig,
+    setPaintingConfig,
+    videoConfig,
+    setVideoConfig,
+    textConfig,
+    setTextConfig,
     customPrompts,
     setCustomPrompt,
     resetToDefaults,
   } = useConfig();
 
-  const [tempApiKey, setTempApiKey] = useState(apiKey);
+  // 临时编辑状态
+  const [editingModel, setEditingModel] = useState<ModelType | null>(null);
+  const [tempConfig, setTempConfig] = useState<ModelConfig>({ baseUrl: '', apiKey: '', model: '' });
   const [editingPrompt, setEditingPrompt] = useState<string | null>(null);
   const [tempPrompt, setTempPrompt] = useState('');
-  const [showModelPicker, setShowModelPicker] = useState(false);
 
-  const handleSaveApiKey = async () => {
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    await setApiKey(tempApiKey);
-    Alert.alert('✓ 灵力源已更新', '新的 API Key 已生效');
+  // 获取当前配置
+  const getConfig = (type: ModelType): ModelConfig => {
+    switch (type) {
+      case 'painting': return paintingConfig;
+      case 'video': return videoConfig;
+      case 'text': return textConfig;
+    }
   };
 
-  const handleSelectModel = async (modelId: string) => {
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    await setSelectedModel(modelId);
-    setShowModelPicker(false);
+  // 保存配置
+  const saveConfig = async (type: ModelType, config: ModelConfig) => {
+    switch (type) {
+      case 'painting': await setPaintingConfig(config); break;
+      case 'video': await setVideoConfig(config); break;
+      case 'text': await setTextConfig(config); break;
+    }
+  };
+
+  const handleEditModel = (type: ModelType) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setEditingModel(type);
+    setTempConfig({ ...getConfig(type) });
+  };
+
+  const handleSaveModel = async () => {
+    if (editingModel) {
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      await saveConfig(editingModel, tempConfig);
+      setEditingModel(null);
+      Alert.alert('✓ 配置已保存', `${MODEL_TYPE_INFO[editingModel].title}配置已更新`);
+    }
   };
 
   const handleEditPrompt = (traitKey: string) => {
@@ -76,7 +108,6 @@ const GrimoireScreen: React.FC<Props> = ({ navigation }) => {
           onPress: async () => {
             await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
             await resetToDefaults();
-            setTempApiKey(apiKey);
             Alert.alert('已重置', '所有配置已恢复默认');
           },
         },
@@ -84,7 +115,35 @@ const GrimoireScreen: React.FC<Props> = ({ navigation }) => {
     );
   };
 
-  const selectedModelInfo = AVAILABLE_MODELS.find(m => m.id === selectedModel);
+  // 渲染模型配置卡片
+  const renderModelCard = (type: ModelType) => {
+    const info = MODEL_TYPE_INFO[type];
+    const config = getConfig(type);
+    return (
+      <TouchableOpacity
+        key={type}
+        style={[styles.modelCard, { borderColor: info.color }]}
+        onPress={() => handleEditModel(type)}
+      >
+        <View style={styles.modelCardHeader}>
+          <MaterialIcons name={info.icon as any} size={24} color={info.color} />
+          <Text style={[styles.modelCardTitle, { color: info.color }]}>{info.title}</Text>
+        </View>
+        <Text style={styles.modelCardDesc}>{info.desc}</Text>
+        <View style={styles.modelCardInfo}>
+          <Text style={styles.modelCardLabel}>模型: </Text>
+          <Text style={styles.modelCardValue} numberOfLines={1}>{config.model || '未配置'}</Text>
+        </View>
+        <View style={styles.modelCardInfo}>
+          <Text style={styles.modelCardLabel}>API Key: </Text>
+          <Text style={styles.modelCardValue}>
+            {config.apiKey ? '••••••••' + config.apiKey.slice(-4) : '未配置'}
+          </Text>
+        </View>
+        <MaterialIcons name="chevron-right" size={20} color="rgba(255,255,255,0.3)" style={styles.modelCardArrow} />
+      </TouchableOpacity>
+    );
+  };
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -106,49 +165,14 @@ const GrimoireScreen: React.FC<Props> = ({ navigation }) => {
       </View>
 
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
-        {/* API Key Section */}
+        {/* Model Configuration Section */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <MaterialIcons name="vpn-key" size={20} color={COLORS.accentCyan} />
-            <Text style={styles.sectionTitle}>灵力源 (API Key)</Text>
+            <MaterialIcons name="settings" size={20} color={COLORS.accentCyan} />
+            <Text style={styles.sectionTitle}>大模型配置</Text>
           </View>
-          <Text style={styles.sectionDesc}>输入你的 ModelScope API Key 以获取更多召唤次数</Text>
-          <View style={styles.inputRow}>
-            <TextInput
-              style={styles.textInput}
-              value={tempApiKey}
-              onChangeText={setTempApiKey}
-              placeholder="ms-xxxxxxxx-xxxx-xxxx..."
-              placeholderTextColor="rgba(255,255,255,0.3)"
-              secureTextEntry
-              autoCapitalize="none"
-            />
-            <TouchableOpacity style={styles.saveButton} onPress={handleSaveApiKey}>
-              <MaterialIcons name="check" size={20} color={COLORS.backgroundDark} />
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Model Selection */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <MaterialIcons name="auto-awesome" size={20} color={COLORS.accentMagenta} />
-            <Text style={styles.sectionTitle}>召唤阵法 (模型选择)</Text>
-          </View>
-          <Text style={styles.sectionDesc}>不同的阵法产生不同风格的替身</Text>
-          <TouchableOpacity
-            style={styles.modelSelector}
-            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              setShowModelPicker(true);
-            }}
-          >
-            <View>
-              <Text style={styles.modelName}>{selectedModelInfo?.name || '未选择'}</Text>
-              <Text style={styles.modelDesc}>{selectedModelInfo?.description}</Text>
-            </View>
-            <MaterialIcons name="expand-more" size={24} color={COLORS.accentCyan} />
-          </TouchableOpacity>
+          <Text style={styles.sectionDesc}>配置绘画、视频、文本大模型（OpenAI兼容格式）</Text>
+          {(['painting', 'video', 'text'] as ModelType[]).map(renderModelCard)}
         </View>
 
         {/* Custom Prompts */}
@@ -188,35 +212,59 @@ const GrimoireScreen: React.FC<Props> = ({ navigation }) => {
         </TouchableOpacity>
       </ScrollView>
 
-      {/* Model Picker Modal */}
-      <Modal visible={showModelPicker} transparent animationType="fade">
+      {/* Model Config Editor Modal */}
+      <Modal visible={!!editingModel} transparent animationType="slide">
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>选择召唤阵法</Text>
-            {AVAILABLE_MODELS.map((model) => (
+          <View style={[styles.modalContent, styles.configModal]}>
+            <Text style={styles.modalTitle}>
+              配置{editingModel ? MODEL_TYPE_INFO[editingModel].title : ''}
+            </Text>
+            
+            <Text style={styles.inputLabel}>Base URL</Text>
+            <TextInput
+              style={styles.configInput}
+              value={tempConfig.baseUrl}
+              onChangeText={(text) => setTempConfig({ ...tempConfig, baseUrl: text })}
+              placeholder="https://api.example.com/v1"
+              placeholderTextColor="rgba(255,255,255,0.3)"
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+
+            <Text style={styles.inputLabel}>API Key</Text>
+            <TextInput
+              style={styles.configInput}
+              value={tempConfig.apiKey}
+              onChangeText={(text) => setTempConfig({ ...tempConfig, apiKey: text })}
+              placeholder="sk-xxxxxxxx..."
+              placeholderTextColor="rgba(255,255,255,0.3)"
+              secureTextEntry
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+
+            <Text style={styles.inputLabel}>模型名称</Text>
+            <TextInput
+              style={styles.configInput}
+              value={tempConfig.model}
+              onChangeText={(text) => setTempConfig({ ...tempConfig, model: text })}
+              placeholder="gpt-4o / sora-2 / ..."
+              placeholderTextColor="rgba(255,255,255,0.3)"
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+
+            <View style={styles.promptActions}>
               <TouchableOpacity
-                key={model.id}
-                style={[
-                  styles.modelOption,
-                  selectedModel === model.id && styles.modelOptionSelected,
-                ]}
-                onPress={() => handleSelectModel(model.id)}
+                style={styles.promptCancelBtn}
+                onPress={() => setEditingModel(null)}
               >
-                <View>
-                  <Text style={styles.modelOptionName}>{model.name}</Text>
-                  <Text style={styles.modelOptionDesc}>{model.description}</Text>
-                </View>
-                {selectedModel === model.id && (
-                  <MaterialIcons name="check-circle" size={24} color={COLORS.accentCyan} />
-                )}
+                <Text style={styles.promptCancelText}>取消</Text>
               </TouchableOpacity>
-            ))}
-            <TouchableOpacity
-              style={styles.modalClose}
-              onPress={() => setShowModelPicker(false)}
-            >
-              <Text style={styles.modalCloseText}>关闭</Text>
-            </TouchableOpacity>
+              <TouchableOpacity style={styles.promptSaveBtn} onPress={handleSaveModel}>
+                <Text style={styles.promptSaveText}>保存配置</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
@@ -489,6 +537,69 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     fontSize: 14,
     fontWeight: 'bold',
+  },
+  // Model card styles
+  modelCard: {
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    borderWidth: 1,
+    borderRadius: BORDER_RADIUS.md,
+    padding: SPACING.md,
+    marginBottom: SPACING.sm,
+    position: 'relative',
+  },
+  modelCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: SPACING.xs,
+  },
+  modelCardTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginLeft: SPACING.sm,
+  },
+  modelCardDesc: {
+    color: 'rgba(255,255,255,0.5)',
+    fontSize: 12,
+    marginBottom: SPACING.sm,
+  },
+  modelCardInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  modelCardLabel: {
+    color: 'rgba(255,255,255,0.5)',
+    fontSize: 12,
+  },
+  modelCardValue: {
+    color: COLORS.white,
+    fontSize: 12,
+    flex: 1,
+  },
+  modelCardArrow: {
+    position: 'absolute',
+    right: SPACING.md,
+    top: '50%',
+  },
+  // Config modal styles
+  configModal: {
+    maxHeight: '85%',
+  },
+  inputLabel: {
+    color: COLORS.accentCyan,
+    fontSize: 12,
+    fontWeight: 'bold',
+    marginBottom: SPACING.xs,
+    marginTop: SPACING.sm,
+  },
+  configInput: {
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderWidth: 1,
+    borderColor: 'rgba(0, 255, 255, 0.2)',
+    borderRadius: BORDER_RADIUS.md,
+    padding: SPACING.sm,
+    color: COLORS.white,
+    fontSize: 14,
   },
 });
 
